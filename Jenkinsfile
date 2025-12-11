@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_ENV = 'sonar-local'
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-token')
-        GITHUB_CREDS = 'github-token'
+        SONARQUBE_ENV = 'sonar-local'                 // Jenkins SonarQube server ID
+        DOCKERHUB_CREDENTIALS = credentials('docker-hub-token') // DockerHub creds ID
+        GITHUB_CREDS = 'github-token'                 // GitHub creds ID
     }
 
     stages {
@@ -18,20 +18,20 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh "mvn clean package"
+                bat "mvn clean package"
             }
         }
 
         stage('Test') {
             steps {
-                sh "mvn test"
+                bat "mvn test"
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv("${SONARQUBE_ENV}") {
-                    sh "mvn sonar:sonar"
+                    bat "mvn sonar:sonar"
                 }
             }
         }
@@ -44,24 +44,24 @@ pipeline {
 
         stage('Docker Build') {
             steps {
-                sh "docker build -t ${DOCKERHUB_CREDENTIALS_USR}/integration-project:latest ."
+                bat "docker build -t %DOCKERHUB_CREDENTIALS_USR%/integration-project:latest ."
             }
         }
 
         stage('Docker Login & Push') {
             steps {
-                sh """
-                    echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
-                    docker push ${DOCKERHUB_CREDENTIALS_USR}/integration-project:latest
+                bat """
+                echo %DOCKERHUB_CREDENTIALS_PSW% | docker login -u %DOCKERHUB_CREDENTIALS_USR% --password-stdin
+                docker push %DOCKERHUB_CREDENTIALS_USR%/integration-project:latest
                 """
             }
         }
 
         stage('Deploy') {
             steps {
-                sh """
-                    docker rm -f integration-project || true
-                    docker run -d --name integration-project -p 8080:8080 ${DOCKERHUB_CREDENTIALS_USR}/integration-project:latest
+                bat """
+                docker rm -f integration-project || exit 0
+                docker run -d --name integration-project -p 8080:8080 %DOCKERHUB_CREDENTIALS_USR%/integration-project:latest
                 """
             }
         }
