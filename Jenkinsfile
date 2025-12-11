@@ -2,12 +2,13 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_ENV = 'sonar-local'                 // Jenkins SonarQube server ID
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-token') // DockerHub creds ID
-        GITHUB_CREDS = 'github-token'                 // GitHub creds ID
+        SONARQUBE_ENV = 'sonar-local'                  // Jenkins SonarQube server ID
+        DOCKERHUB_CREDENTIALS = credentials('docker-hub-token') // DockerHub credentials
+        GITHUB_CREDS = 'github-token'                  // GitHub credentials
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 git branch: 'main',
@@ -30,6 +31,7 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
+                // Wrap analysis to link it to this pipeline run
                 withSonarQubeEnv("${SONARQUBE_ENV}") {
                     bat "mvn sonar:sonar"
                 }
@@ -38,6 +40,7 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
+                // Wait for SonarQube to finish processing this run
                 waitForQualityGate abortPipeline: true
             }
         }
