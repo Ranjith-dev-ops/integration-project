@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         SONARQUBE_ENV = 'sonar-local'              // optional: name of Sonar server in Jenkins
-        SONAR_TOKEN = credentials('sonar-token')  // secret text credential id in Jenkins (create if needed)
+        SONAR_TOKEN = credentials('jenkins-sonar-token')  // secret text credential id in Jenkins (create if needed)
         DOCKERHUB = credentials('docker-hub-token')// username/password credential id in Jenkins
         GIT_CREDS_ID = 'github-token'              // credential id for Git (create in Jenkins)
     }
