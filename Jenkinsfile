@@ -2,17 +2,18 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_ENV = 'sonar-local'                  // Jenkins SonarQube server ID
-        DOCKERHUB_CREDENTIALS = credentials('docker-hub-token') // DockerHub credentials
-        GITHUB_CREDS = 'github-token'                  // GitHub credentials
+        SONARQUBE_ENV = 'sonar-local'                      // Jenkins SonarQube server name (must exist)
+        SONAR_TOKEN = credentials('jenkins-sonar-token')           // Jenkins credential id for Sonar token (secret text)
+        DOCKERHUB = credentials('docker-hub-token')        // docker-hub-token must be created in Jenkins (username/password)
+        GIT_CREDS_ID = 'github-token'                      // credential id (string) used by git step
     }
 
     stages {
-
         stage('Checkout') {
             steps {
+                // Use the actual credentials id (not the env name)
                 git branch: 'main',
-                    credentialsId: 'GITHUB_CREDS',
+                    credentialsId: "${GIT_CREDS_ID}",
                     url: 'https://github.com/Ranjith-dev-ops/integration-project.git'
             }
         }
@@ -31,31 +32,39 @@ pipeline {
 
         stage('SonarQube Analysis') {
             steps {
-                // Wrap analysis to link it to this pipeline run
+                // Either rely on withSonarQubeEnv (requires Sonar server configured in Jenkins)
+                // and also pass token explicitly to mvn to be sure:
                 withSonarQubeEnv("${SONARQUBE_ENV}") {
-                    bat "mvn sonar:sonar"
+                    // use %SONAR_TOKEN% (Windows bat) to pass token to Maven
+                    bat "mvn sonar:sonar -Dsonar.login=%SONAR_TOKEN%"
                 }
             }
         }
 
         stage('Quality Gate') {
             steps {
-                // Wait for SonarQube to finish processing this run
-                waitForQualityGate abortPipeline: true
+                // Protect against infinite waiting: wrap waitForQualityGate in a timeout
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate(abortPipeline: true)
+                        echo "Quality Gate status: ${qg.status}"
+                    }
+                }
             }
         }
 
         stage('Docker Build') {
             steps {
-                bat "docker build -t %DOCKERHUB_CREDENTIALS_USR%/integration-project:latest ."
+                // DOCKERHUB_USR and _PSW will be available from credentials('docker-hub-token')
+                bat "docker build -t %DOCKERHUB_USR%/integration-project:latest ."
             }
         }
 
         stage('Docker Login & Push') {
             steps {
                 bat """
-                echo %DOCKERHUB_CREDENTIALS_PSW% | docker login -u %DOCKERHUB_CREDENTIALS_USR% --password-stdin
-                docker push %DOCKERHUB_CREDENTIALS_USR%/integration-project:latest
+                echo %DOCKERHUB_PSW% | docker login -u %DOCKERHUB_USR% --password-stdin
+                docker push %DOCKERHUB_USR%/integration-project:latest
                 """
             }
         }
@@ -64,7 +73,7 @@ pipeline {
             steps {
                 bat """
                 docker rm -f integration-project || exit 0
-                docker run -d --name integration-project -p 8080:8080 %DOCKERHUB_CREDENTIALS_USR%/integration-project:latest
+                docker run -d --name integration-project -p 8081:8080 %DOCKERHUB_USR%/integration-project:latest
                 """
             }
         }
