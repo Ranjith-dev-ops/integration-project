@@ -1,12 +1,12 @@
 package com.example;
 
 public class App {
-    public static void main(String[] args) {
-        System.out.println("Hello CI/CD Pipeline!");
+    public String greet() {
+        return "Hello World";
     }
 
-    public int add(int a, int b) {
-        return a + b;
+    public static void main(String[] args) {
+        System.out.println(new App().greet());
     }
 }
 

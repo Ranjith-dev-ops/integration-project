@@ -6,9 +6,9 @@ import static org.junit.Assert.*;
 public class AppTest {
 
     @Test
-    public void testAdd() {
-        App a = new App();
-        assertEquals(5, a.add(2, 3));
+    public void testGreet() {
+        App app = new App();
+        assertEquals("Hello World", app.greet());
     }
 }
 
