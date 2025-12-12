@@ -2,53 +2,69 @@ pipeline {
     agent any
 
     environment {
-        SONARQUBE_ENV = 'sonar-local'              // Name of SonarQube server configured in Jenkins (optional)
-        SONAR_TOKEN = credentials('jenkins-sonar-token')  // Secret Text credential id in Jenkins (Sonar token)
-        DOCKERHUB = credentials('docker-hub-token')// Username/Password credential id in Jenkins
-        GIT_CREDS_ID = 'github-token'              // Credential id for Git (personal access token)
+        SONARQUBE_ENV = 'sonar-local'              // optional: name of Sonar server in Jenkins
+        SONAR_TOKEN = credentials('sonar-token')  // secret text credential id in Jenkins (create if needed)
+        DOCKERHUB = credentials('docker-hub-token')// username/password credential id in Jenkins
+        GIT_CREDS_ID = 'github-token'              // credential id for Git (create in Jenkins)
     }
 
     stages {
         stage('Checkout') {
             steps {
-                // Use the actual credential id created in Jenkins
                 git branch: 'main',
                     credentialsId: "${GIT_CREDS_ID}",
                     url: 'https://github.com/Ranjith-dev-ops/integration-project.git'
             }
         }
 
-        stage('Build') {
+        stage('Build (Maven)') {
             steps {
-                bat "mvn clean package"
-            }
-        }
-
-        stage('Test') {
-            steps {
-                bat "mvn test"
+                // Run Maven build - fails if tests or build fail
+                bat "mvn -B clean package"
+                // Show what was produced
+                bat "echo ==== target listing ==== & dir target || echo target directory not found"
+                // Fail fast if no jar found
+                bat """
+                if not exist target\\*.jar (
+                  echo ERROR: No jar found in target\\
+                  exit 1
+                ) else (
+                  echo Jar found.
+                )
+                """
+                // Save the built jar to be used in another stage (in case Jenkins uses different nodes)
+                stash name: 'app-jar', includes: 'target/*.jar'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                // Use Sonar token explicitly to ensure scanner authenticates
-                // withSonarQubeEnv will also set SONAR_HOST_URL if configured in Jenkins
+                // If you don't want Sonar, remove this whole stage.
+                // This runs mvn sonar:sonar and uses the SONAR_TOKEN credential defined above.
+                // Ensure you have added 'sonar-token' as Secret Text in Jenkins.
                 withSonarQubeEnv("${SONARQUBE_ENV}") {
                     bat "mvn sonar:sonar -Dsonar.login=%SONAR_TOKEN%"
                 }
             }
         }
 
-        // NOTE: Quality Gate stage removed to avoid pipeline hang
         stage('Skip Quality Gate (no webhook)') {
             steps {
-                echo "Not waiting for SonarQube callback. Analysis will run on SonarQube but pipeline won't block."
+                echo "Not waiting for SonarQube callback (no webhook configured). Pipeline continues."
+            }
+        }
+
+        stage('Prepare for Docker Build') {
+            steps {
+                // Ensure the artifact is present for docker build
+                unstash 'app-jar'
+                bat "echo ==== target listing before docker build ==== & dir target"
             }
         }
 
         stage('Docker Build') {
             steps {
+                // Build image from Dockerfile in repo root (Dockerfile copies target/*.jar)
                 bat "docker build -t %DOCKERHUB_USR%/integration-project:latest ."
             }
         }
@@ -64,7 +80,7 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                // Use host port 8081 to avoid colliding with Jenkins on 8080
+                // Avoid port conflict with Jenkins on 8080 — mapping host 8081 to container 8080
                 bat """
                 docker rm -f integration-project || exit 0
                 docker run -d --name integration-project -p 8081:8080 %DOCKERHUB_USR%/integration-project:latest
@@ -75,7 +91,7 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline finished. Check Sonar and Jenkins console for details."
+            echo "Pipeline finished. Check console and Sonar for details."
         }
     }
 }
